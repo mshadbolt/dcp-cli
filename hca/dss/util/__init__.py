@@ -1,6 +1,11 @@
+import errno
+import logging
 import os
+import shutil
 from builtins import FileExistsError
 from ...util.compat import scandir
+
+log = logging.getLogger(__name__)
 
 
 def separator_to_camel_case(separated, separator):
@@ -50,4 +55,11 @@ def hardlink(source, link_name):
         dest_stat = os.stat(link_name)
         # Check device first because different drives can have the same inode number
         if source_stat.st_dev != dest_stat.st_dev or source_stat.st_ino != dest_stat.st_ino:
+            raise
+    except OSError as e:
+        if e.errno == errno.EMLINK:
+            # FIXME: Copying is not space efficient; see https://github.com/HumanCellAtlas/dcp-cli/issues/453
+            log.warning('Too many hard links to a file, reverting to copying')
+            shutil.copyfile(source, link_name)
+        else:
             raise

@@ -337,6 +337,20 @@ class TestManifestDownloadBundle(DSSClientTestCase):
             actual_hash = hashlib.sha256(f.read()).hexdigest()
         self.assertEqual(actual_hash, expected_hash)
 
+    @unittest.skipIf(os.name is 'nt', 'os.link is not used on Windows')
+    def test_link_fails(self):
+        """If os.link fails on *nix, we should revert to copy"""
+        os_error = OSError()
+        os_error.errno = errno.EMLINK
+        with patch('os.link', side_effect=os_error):
+            from hca.dss.util import log as log_
+            with self.assertLogs(logger=log_, level=logging.WARNING) as logs:
+                self._mock_download_manifest(self.manifest_file, 'aws', layout='bundle')
+        for record in logs.records:
+            self.assertEqual(record.funcName, 'hardlink')
+            self.assertEqual(record.msg, 'Too many hard links to a file, reverting to copying')
+        self.assertEqual(len(logs.records), 9)
+
     def test_download_dir_empty(self):
         self._test_download_dir('')
 
@@ -465,6 +479,20 @@ class TestDownload(DSSClientTestCase):
 
     def test_download_dir_dot_dir(self):
         self._test_download_dir(os.path.join('.', 'a_nested_dir'))
+
+    @unittest.skipIf(os.name is 'nt', 'os.link is not used on Windows')
+    def test_link_fails(self):
+        """If os.link fails on *nix, we should revert to copy"""
+        os_error = OSError()
+        os_error.errno = errno.EMLINK
+        with patch('os.link', side_effect=os_error):
+            from hca.dss.util import log as log_
+            with self.assertLogs(logger=log_, level=logging.WARNING) as logs:
+                self._mock_download('any_bundle_uuid', 'aws')
+        for record in logs.records:
+            self.assertEqual(record.funcName, 'hardlink')
+            self.assertEqual(record.msg, 'Too many hard links to a file, reverting to copying')
+        self.assertEqual(len(logs.records), 5)
 
     @staticmethod
     def _fake_get_collection(collections):
